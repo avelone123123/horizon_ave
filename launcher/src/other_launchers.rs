@@ -281,11 +281,82 @@ pub fn curseforge_instances(root: &Path) -> Vec<Found> {
 pub fn modrinth_app_profiles(root: &Path) -> Vec<Found> {
     game_folders(&root.join("profiles"), MODRINTH_APP)
 }
+pub fn tlauncher_instances(root: &Path) -> Vec<Found> {
+    let versions = root.join("versions");
+    let Ok(entries) = fs::read_dir(&versions) else {
+        return Vec::new();
+    };
+    let mut found: Vec<Found> = entries
+        .into_iter()
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            if !path.is_dir() {
+                return None;
+            }
+            let name = path.file_name()?.to_string_lossy().to_string();
+            let json_file = path.join(format!("{name}.json"));
+            let text = fs::read_to_string(&json_file).ok()?;
+            let json: Value = serde_json::from_str(&text).ok()?;
+            let minecraft = json["jar"]
+                .as_str()
+                .map(String::from)
+                .or_else(|| json["inheritsFrom"].as_str().map(String::from))
+                .unwrap_or_else(|| name.clone());
+            let lower = name.to_lowercase();
+            let loader = if lower.contains("fabric") {
+                let ver = json["libraries"]
+                    .as_array()
+                    .and_then(|libs| {
+                        libs.iter().find_map(|l| {
+                            let n = l["name"].as_str()?;
+                            n.strip_prefix("net.fabricmc:fabric-loader:").map(String::from)
+                        })
+                    })
+                    .unwrap_or_else(|| "0.16.9".to_string());
+                Some(Loader {
+                    name: "fabric",
+                    version: ver,
+                })
+            } else if lower.contains("neoforge") {
+                Some(Loader {
+                    name: "neoforge",
+                    version: "latest".to_string(),
+                })
+            } else if lower.contains("forge") {
+                Some(Loader {
+                    name: "forge",
+                    version: "latest".to_string(),
+                })
+            } else if lower.contains("quilt") {
+                Some(Loader {
+                    name: "quilt",
+                    version: "latest".to_string(),
+                })
+            } else {
+                None
+            };
+            Some(Found {
+                launcher: "TLauncher Legacy",
+                name,
+                minecraft: Some(minecraft),
+                loader,
+                game: root.to_path_buf(),
+                shared: true,
+            })
+        })
+        .collect();
+    found.sort_by_key(|f| f.name.to_lowercase());
+    found
+}
 
 /// What one folder holds: an official launcher's profiles, a Prism or MultiMC root (or its
 /// `instances/`), the CurseForge app's modding folder, the Modrinth App's folder, or a single
 /// instance folder.
 pub fn in_folder(dir: &Path, launcher: Option<&'static str>) -> Vec<Found> {
+    if dir.join("tlauncher_profiles.json").is_file() {
+        return tlauncher_instances(dir);
+    }
     if dir.join("launcher_profiles.json").is_file() {
         return official_profiles(dir);
     }
@@ -332,6 +403,7 @@ pub fn scan(os: Os, folders: &Folders) -> Vec<Found> {
         seen.push(dir.clone());
         match launcher {
             OFFICIAL => found.extend(official_profiles(&dir)),
+            "TLauncher Legacy" => found.extend(tlauncher_instances(&dir)),
             "Prism Launcher" | "MultiMC" => found.extend(prism_instances(&dir, launcher)),
             "Modrinth App" => found.extend(modrinth_app_profiles(&dir)),
             _ => {}
@@ -401,8 +473,10 @@ pub fn import(found: &Found, name: &str, minecraft: Option<&str>) -> Result<Inst
             found.launcher, found.name
         ));
     };
-    let versions = crate::minecraft_versions::load()?;
-    let version = versions.find(minecraft)?.id.clone();
+    let version = crate::minecraft_versions::load()
+        .ok()
+        .and_then(|v| v.find(minecraft).ok().map(|m| m.id.clone()))
+        .unwrap_or_else(|| minecraft.to_string());
     let instance = instances::create_java(name, &version)?;
     if let Err(e) = copy_game(found, &instance.home) {
         let _ = instances::delete(&instance.id);

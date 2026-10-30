@@ -1307,16 +1307,27 @@ fn java_player_with(
             .into_iter()
             .find_map(|a| Some((a.clone(), secrets_in(store, &a.uuid).filter(|s| s.owns)?)))
     };
-    let (account, secrets) = pass
-        .session
-        .or(pass.owner)
-        .or_else(kept)
-        .ok_or_else(|| NoOwner.to_string())?;
+    if let Some((account, secrets)) = pass.session.or(pass.owner).or_else(kept) {
+        return Ok(crate::java_launch::Player {
+            name: account.name,
+            uuid: account.uuid,
+            token: secrets.minecraft_token,
+            xuid: secrets.xuid.unwrap_or_default(),
+        });
+    }
+    let name = match accounts.player() {
+        Player::Offline(n) => n,
+        _ => accounts
+            .offline_selected
+            .clone()
+            .unwrap_or_else(|| "avelone".to_string()),
+    };
+    let uuid = horizon_protocol::crypto::uuid_string(horizon_protocol::crypto::offline_uuid(&name));
     Ok(crate::java_launch::Player {
-        name: account.name,
-        uuid: account.uuid,
-        token: secrets.minecraft_token,
-        xuid: secrets.xuid.unwrap_or_default(),
+        name,
+        uuid,
+        token: "0".to_string(),
+        xuid: String::new(),
     })
 }
 

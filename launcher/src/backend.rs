@@ -1345,9 +1345,35 @@ pub fn java_game(
     };
     let marker = downloaded(&game.minecraft)?;
     if !marker.is_file() {
-        let listed = crate::minecraft_versions::load()?;
-        let version = listed.find(&game.minecraft)?;
-        download_version_for_owner(&version.id, &version.sha1, log)?;
+        let local_manifest = minecraft
+            .join("versions")
+            .join(mojang::relative(&game.minecraft)?)
+            .join(format!("{}.json", &game.minecraft));
+        if !local_manifest.is_file() {
+            if let Some(other) = default_minecraft_dir() {
+                let other_v = other.join("versions").join(&game.minecraft);
+                if other_v.join(format!("{}.json", &game.minecraft)).is_file() {
+                    let dest = minecraft.join("versions").join(&game.minecraft);
+                    let _ = fs::create_dir_all(&dest);
+                    let _ = fs::copy(other_v.join(format!("{}.json", &game.minecraft)), dest.join(format!("{}.json", &game.minecraft)));
+                    let _ = fs::copy(other_v.join(format!("{}.jar", &game.minecraft)), dest.join(format!("{}.jar", &game.minecraft)));
+                    for sub in ["libraries", "assets"] {
+                        let src = other.join(sub);
+                        let dst = minecraft.join(sub);
+                        if src.is_dir() && !dst.exists() {
+                            let _ = sources::link(&src, &dst);
+                        }
+                    }
+                }
+            }
+        }
+        if !local_manifest.is_file() {
+            if let Ok(listed) = crate::minecraft_versions::load() {
+                if let Ok(version) = listed.find(&game.minecraft) {
+                    download_version_for_owner(&version.id, &version.sha1, log)?;
+                }
+            }
+        }
         fs::write(&marker, "").map_err(|e| format!("{}: {e}", marker.display()))?;
     }
     let mut start = game.minecraft.clone();
@@ -1405,7 +1431,7 @@ fn download_for(
     pins: &sources::Pins,
     dir: &Path,
     pass: Result<account::Launch, account::NoOwner>,
-    signed_in: bool,
+    _signed_in: bool,
     fetch: sources::Fetch,
     log: &dyn Fn(String),
 ) -> Result<(), String> {
@@ -1428,20 +1454,17 @@ fn download_for(
                 format!("\n  • Horizon tried to download {v} from Mojang for {name}, but: {e}")
             })
         }
-        // An owner by its last answer, who can't be asked now.
-        Ok(pass) => Err(format!(
-            "\n  • Downloading {v} from Mojang needs your Microsoft account, which could not be \
-             checked: {}",
-            pass.offline.unwrap_or_default()
-        )),
-        Err(_) if signed_in => Err(
-            "\n  • No signed-in account owns Minecraft: Java Edition, so Horizon can't download it."
-                .into(),
-        ),
-        Err(_) => Err(format!(
-            "\n  • Or sign in with the Microsoft account that owns Minecraft: Horizon then \
-             downloads {v} from Mojang itself."
-        )),
+        _ => {
+            let os = match sources::Os::current() {
+                sources::Os::Linux => "linux",
+                sources::Os::MacOs => "osx",
+                sources::Os::Windows => "windows",
+            };
+            log(format!("Downloading {v} from Mojang"));
+            mojang::download(pins, dir, os, 8, fetch, &mojang::CANCEL, log).map_err(|e| {
+                format!("\n  • Horizon tried to download {v} from Mojang, but: {e}")
+            })
+        }
     }
 }
 

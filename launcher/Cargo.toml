@@ -28,6 +28,7 @@ self-replace = "1"
 clap = { version = "4", features = ["derive"] }
 horizon-theme = { path = "../crates/horizon-theme" }
 horizon-core = { path = "../crates/horizon-core" }
+horizon-protocol = { path = "../crates/horizon-protocol" }
 horizon-prepare = { path = "../crates/horizon-prepare" }
 # Join a friend: invite codes (the game does the joining).
 horizon-friends = { path = "../crates/horizon-friends" }
@@ -78,3 +79,8 @@ syn = "2"
 
 [profile.release]
 strip = true
+[profile.fast]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true

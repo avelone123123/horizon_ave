@@ -116,6 +116,7 @@ pub fn known_folders(os: Os, f: &Folders) -> Vec<(&'static str, PathBuf)> {
         Os::Linux => vec![
             (OFFICIAL, f.home.join(".minecraft")),
             (OFFICIAL, flatpak("com.mojang.Minecraft", ".minecraft")),
+            ("TLauncher Legacy", f.home.join(".tlauncher/legacy/Minecraft/game")),
             ("Prism Launcher", f.data.join("PrismLauncher")),
             (
                 "Prism Launcher",
@@ -135,6 +136,7 @@ pub fn known_folders(os: Os, f: &Folders) -> Vec<(&'static str, PathBuf)> {
         ],
         Os::MacOs => vec![
             (OFFICIAL, f.data.join("minecraft")),
+            ("TLauncher Legacy", f.data.join("tlauncher/legacy/Minecraft/game")),
             ("Prism Launcher", f.data.join("PrismLauncher")),
             ("MultiMC", f.data.join("MultiMC")),
             ("Modrinth App", f.data.join("ModrinthApp")),
@@ -142,6 +144,7 @@ pub fn known_folders(os: Os, f: &Folders) -> Vec<(&'static str, PathBuf)> {
         ],
         Os::Windows => vec![
             (OFFICIAL, f.data.join(".minecraft")),
+            ("TLauncher Legacy", f.data.join(".tlauncher/legacy/Minecraft/game")),
             ("Prism Launcher", f.data.join("PrismLauncher")),
             ("Modrinth App", f.data.join("ModrinthApp")),
             ("ATLauncher", f.data.join("ATLauncher")),
@@ -490,7 +493,7 @@ fn unlink(path: &Path) -> Result<(), String> {
 }
 
 /// `link` pointing at `target`, replacing an earlier one.
-fn link(target: &Path, link: &Path) -> Result<(), String> {
+pub fn link(target: &Path, link: &Path) -> Result<(), String> {
     unlink(link)?;
     make_link(target, link).map_err(|e| format!("{} → {}: {e}", link.display(), target.display()))
 }
